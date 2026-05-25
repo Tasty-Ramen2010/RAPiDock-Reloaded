@@ -46,7 +46,7 @@ cd RAPiDock-Reloaded
 
 ### Install Option 1: Install via conda .yaml file
 
-We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
+We can easy install the environment by using the provided ***newdock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
 
 ```shell
 conda env create -f newdock_env.yaml -n newDock
@@ -59,7 +59,7 @@ Install CUDA toolkit or seperate GPU-dependent toolkits seperately
 
 ### Install Option 2: Install via conda .yaml file in VS Code terminal
 
-We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
+Opening a terminal in Visual Studio Code should theoretically allow us to run this software. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py.
 
 ```shell
 conda env create -f rapidock_env.yaml -n newDock
