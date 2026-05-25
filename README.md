@@ -18,7 +18,8 @@ RAPiDock relies on external software/libraries to handle protein and peptide dat
 
 - [ ] [Python](https://www.python.org/).
 - [ ] [Pytorch](https://pytorch.org/) (1.11.0). Use to model, train, and evaluate the actual neural networks.
-- [ ] [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit). (**Optional**)
+- [ ] *[CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit). (**Optional**)
+- [ ] *Toolkits per GPU
 - [ ] [PyG](https://www.pyg.org/). Used for implementing neural networks.
 - [ ] [MDAnalysis](https://www.mdanalysis.org/). To handle residue acids related data.
 - [ ] [BioPython](https://github.com/biopython/biopython). To parse PDB files.
@@ -44,7 +45,7 @@ git clone https://github.com/huifengzhao/RAPiDock.git
 
 ### Install Option 1: Install via conda .yaml file
 
-We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 100 in utils/pyrosetta_utils.py
+We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
 
 ```shell
 conda env create -f rapidock_env.yaml -n newDock
@@ -55,7 +56,7 @@ python -c 'import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()' 
 
 ### Install Option 2: Install via conda .yaml file in VS Code terminal
 
-We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 100 in utils/pyrosetta_utils.py
+We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
 
 ```shell
 conda env create -f rapidock_env.yaml -n newDock
