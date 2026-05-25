@@ -37,6 +37,7 @@ We will set up the environment using Conda.
 
 ```shell
 git clone https://github.com/Tasty-Ramen2010/RAPiDock-Reloaded.git
+cd RAPiDock-Reloaded
 ```
 
 ### Download Pre-trained models
