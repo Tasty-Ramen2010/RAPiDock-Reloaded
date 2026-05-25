@@ -19,13 +19,13 @@ from esm import FastaBatchedDataset, pretrained
 from utils.dataset_utils import three_to_one, standard_residue_sort, get_sequences
 from dataset.protein_feature import get_protein_feature_mda
 from dataset.peptide_feature import get_ori_peptide_feature_mda
-from utils.PeptideBuilder import get_edges_from_sequence, make_structure_from_sequence
+from utils.PeptideBuilder import make_structure_from_sequence
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
 elif torch.backends.mps.is_available():
     device = torch.device("mps")
-elif torch.backends.xpu.is_available() and hasattr(torch.backends, "xpu"):
+elif hasattr(torch.backends, "xpu") and torch.backends.xpu.is_available():
     device = torch.device("xpu")
 else:
     device = torch.device("cpu")

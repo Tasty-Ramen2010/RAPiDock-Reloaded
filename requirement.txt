@@ -14,3 +14,4 @@ torch_sparse
 torch_cluster
 pyrosetta-installer
 psutil
+PeptideBuilder

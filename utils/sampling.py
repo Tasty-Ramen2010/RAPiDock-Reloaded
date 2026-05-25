@@ -19,7 +19,7 @@ def sampling(data_list, model, args, inference_steps =20,
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
-    elif torch.backends.xpu.is_available() and hasattr(torch.backends, "xpu"):
+    elif hasattr(torch.backends, "xpu") and torch.backends.xpu.is_available():
         device = torch.device("xpu")
     else:
         device = torch.device("cpu")

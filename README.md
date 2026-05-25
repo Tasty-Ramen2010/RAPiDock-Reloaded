@@ -82,12 +82,6 @@ We are ready to run inference. To test the model, an example dataset is provided
 python inference.py --config default_inference_args.yaml --protein_peptide_csv data/protein_peptide_example.csv --output_dir results/default
 ```
 
-If you see errors for Mac, you can run commands to temporarily fix them until later versions remove the error entirely:
-
-```shell
-export KMP_DUPLICATE_LIB_OK=TRUE
-```
-
 By default, we will use 5 CPUs for computing, if we want to change the number of CPUs, we can simply:
 
 ```shell

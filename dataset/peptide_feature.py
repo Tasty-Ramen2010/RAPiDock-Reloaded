@@ -9,7 +9,7 @@ import math
 import numpy as np
 import torch
 from torch_scatter import scatter_max,scatter_min
-from utils.PeptideBuilder import get_edges_from_sequence, make_structure_from_sequence
+from utils.PeptideBuilder import make_structure_from_sequence  # get_edges_from_sequence replaced by RDKit extraction below
 import torch.nn.functional as F
 import torch_cluster
 from MDAnalysis.analysis import distances
@@ -515,11 +515,9 @@ def get_ori_peptide_feature_mda(peptide_file, lm_embedding_chains=None, match = 
     else:
         peptide_mol = MDAnalysis.Universe(peptide_file)
         
-    seq_str = ''.join([three_to_one[res_name] if res_name in three_to_one.keys() else f'[{res_name}]' for res_name in peptide_mol.residues.resnames])
-    oxt = len(peptide_mol.atoms.select_atoms('name OXT')) == 1
-    all_edge_index = (get_edges_from_sequence(seq_str, oxt=oxt)[:,:2] -1)
-    all_edge_index = np.concatenate([all_edge_index,all_edge_index[:,[1,0]]],axis=-1).reshape(-1,2)
-    
+    # all_edge_index is computed after peptide_noh.pdb is written (see below),
+    # using RDKit for correct atom-level bond indices that work for all residue types.
+
     with torch.no_grad():
         coords = []
         ori_coords = []
@@ -629,6 +627,21 @@ def get_ori_peptide_feature_mda(peptide_file, lm_embedding_chains=None, match = 
         new_u_content = ''.join(open(os.path.join(os.path.dirname(peptide_file), 'peptide_noh.pdb'),'r').readlines())
         new_u = MDAnalysis.Universe(StringIO(new_u_content),format='pdb')
         backbone_edge_index,res_atoms_dic = find_backbone_bonds(new_u)
+
+        #nuild all-atom edge index using RDKit, due to similarity in reading from MDAnalysis and RDKit when it comes to atom ordering, we can be assured that the edge indices will be correct for all residue types (including non-standard ones), which is not the case when we try to find sidechain bonds using MDAnalysis directly.
+        _rdmol = Chem.MolFromPDBBlock(new_u_content, sanitize=False, removeHs=False)
+        if _rdmol is not None:
+            _rdmol = RemoveHs(_rdmol, sanitize=False)
+            _rows, _cols = [], []
+            for _bond in _rdmol.GetBonds():
+                _i, _j = _bond.GetBeginAtomIdx(), _bond.GetEndAtomIdx()
+                _rows += [_i, _j]
+                _cols += [_j, _i]
+            all_edge_index = np.array(list(zip(_rows, _cols)), dtype=np.int32)
+        else:
+            # Fallback: backbone connectivity only (sidechain torsion update will be disabled for this complex).
+            all_edge_index = backbone_edge_index.T.numpy()
+
         resid_map = {f'{res.resid}{res.icode}': i for i, res in enumerate(new_u.residues)}
         atom2res_index = [resid_map[f'{atom.resid}{atom.icode}'] for atom in new_u.atoms]
         atom2resid_index = [three2idx[three2self.get(atom.resname, 'X')] for atom in new_u.atoms]
