@@ -31,12 +31,12 @@ RAPiDock relies on external software/libraries to handle protein and peptide dat
 
 -------------
 
-We will set up the environment using [Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Docker](https://www.docker.com/) Tools.
+We will set up the environment using Conda.
 
 ### Clone the current repo
 
 ```shell
-git clone https://github.com/huifengzhao/RAPiDock.git
+git clone https://github.com/Tasty-Ramen2010/RAPiDock-Reloaded.git
 ```
 
 ### Download Pre-trained models
