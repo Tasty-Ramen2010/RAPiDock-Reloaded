@@ -4,7 +4,6 @@ channels:
   - pytorch
   - pyg
   - conda-forge
-  - defaults
 
 dependencies:
   - python=3.10
@@ -23,7 +22,8 @@ dependencies:
   - typing_extensions
   - biopython
   - MDAnalysis
-
+  - _openmp_mutex
+  
   - pip:
       - torch
       - torchvision
