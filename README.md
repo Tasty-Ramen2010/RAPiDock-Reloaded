@@ -54,6 +54,8 @@ pip install --no-build-isolation -r requirement.txt # We separated the dependenc
 python -c 'import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()' # Installation of PyRosetta (Optional)
 ```
 
+Install CUDA toolkit or seperate GPU-dependent toolkits seperately
+
 ### Install Option 2: Install via conda .yaml file in VS Code terminal
 
 We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
