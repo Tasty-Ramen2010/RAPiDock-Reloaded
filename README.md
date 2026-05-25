@@ -48,7 +48,7 @@ git clone https://github.com/Tasty-Ramen2010/RAPiDock-Reloaded.git
 We can easy install the environment by using the provided ***rapidock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
 
 ```shell
-conda env create -f rapidock_env.yaml -n newDock
+conda env create -f newdock_env.yaml -n newDock
 conda activate newDock # activating the constructed environment
 pip install --no-build-isolation -r requirement.txt # We separated the dependencies of conda and pip for a better experience of environment installation.
 python -c 'import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()' # Installation of PyRosetta (Optional)
