@@ -1,0 +1,32 @@
+name: newDock
+
+channels:
+  - pytorch
+  - pyg
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - pyyaml
+  - tqdm
+  - requests
+  - jinja2
+  - setuptools
+  - wheel
+  - joblib
+  - typing_extensions
+  - biopython
+  - cudatoolkit=11.8
+  - MDAnalysis
+
+  - pip:
+      - torch
+      - torchvision
+      - torchaudio
+      - torch_geometric

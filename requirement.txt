@@ -1,0 +1,16 @@
+biopython
+e3nn
+fair-esm
+matplotlib
+networkx
+opt-einsum
+pandas
+sympy
+tqdm
+rdkit
+MDAnalysis
+torch_scatter
+torch_sparse
+torch_cluster
+pyrosetta-installer
+psuitl
