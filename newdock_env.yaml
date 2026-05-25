@@ -22,7 +22,6 @@ dependencies:
   - joblib
   - typing_extensions
   - biopython
-  - cudatoolkit=11.8
   - MDAnalysis
 
   - pip:
