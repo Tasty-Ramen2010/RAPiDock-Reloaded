@@ -7,6 +7,23 @@
 
 
 import os
+import sys
+
+# ── macOS env-var guards ────────────────────────────────────────────────────
+# Must be set BEFORE torch is imported so the flags are visible when
+# PyTorch/OpenMP shared libraries are loaded.
+#
+# KMP_DUPLICATE_LIB_OK  – silences the crash caused by two copies of
+#   libiomp5 being loaded (common when conda PyTorch meets a system OpenMP).
+#
+# PYTORCH_ENABLE_MPS_FALLBACK – lets ops not yet ported to Metal (e.g.
+#   torch.unique with a dim argument, torch_scatter) fall back to CPU
+#   automatically instead of raising a NotImplementedError.
+if sys.platform == "darwin":
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+# ────────────────────────────────────────────────────────────────────────────
+
 import copy
 import yaml
 import torch

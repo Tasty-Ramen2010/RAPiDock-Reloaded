@@ -33,40 +33,63 @@ RAPiDock relies on external software/libraries to handle protein and peptide dat
 
 We will set up the environment using Conda.
 
-### Clone the current repo
+### 1 — Clone the repo
 
 ```shell
 git clone https://github.com/Tasty-Ramen2010/RAPiDock-Reloaded.git
 cd RAPiDock-Reloaded
 ```
 
-### Download Pre-trained models
+### 2 — Download pre-trained models
 
-**Pre-trained models**: RAPiDock has provided two different pre-trained model's parameters:  [rapidock_local.pt](https://zenodo.org/records/14193621/files/rapidock_local.pt?download=1) for local docking and [rapidock_global.pt](https://zenodo.org/records/14193621/files/rapidock_global.pt?download=1) for global docking. Download them and then correctly put into `train_models/CGTensorProductEquivariantModel` in order for the model to run normally.
+RAPiDock ships two pre-trained checkpoints:
 
-### Install Option 1: Install via conda .yaml file
+| Checkpoint | Use case | Download |
+|---|---|---|
+| `rapidock_local.pt` | Local docking (binding pocket known) | [Zenodo](https://zenodo.org/records/14193621/files/rapidock_local.pt?download=1) |
+| `rapidock_global.pt` | Global docking (no pocket info) | [Zenodo](https://zenodo.org/records/14193621/files/rapidock_global.pt?download=1) |
 
-We can easy install the environment by using the provided ***newdock_env.yaml*** and ***requirement.txt*** files. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py
+Place both files in `train_models/CGTensorProductEquivariantModel/`.
+
+### 3 — Set up the environment
+
+Run the setup script. It auto-detects your OS and GPU (CUDA, ROCm, MPS, or CPU), writes a tailored `newdock_env.yaml`, then creates the conda environment for you:
+
+```shell
+python setup_environment.py
+```
+
+The script will:
+1. Print what it detected (OS, architecture, compute device).
+2. Write `newdock_env.yaml` with the correct channels and packages for your system.
+3. Ask for confirmation before running `conda env create`.
+4. Install pip dependencies from `requirement.txt` inside the new environment.
+
+If you prefer to drive it yourself, press **n** at the confirmation prompt and use the commands it prints:
 
 ```shell
 conda env create -f newdock_env.yaml -n newDock
-conda activate newDock # activating the constructed environment
-pip install --no-build-isolation -r requirement.txt # We separated the dependencies of conda and pip for a better experience of environment installation.
-python -c 'import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()' # Installation of PyRosetta (Optional)
+conda activate newDock
+pip install --no-build-isolation -r requirement.txt
 ```
 
-Install CUDA toolkit or seperate GPU-dependent toolkits seperately
+#### Optional — PyRosetta
 
-### Install Option 2: Install via conda .yaml file in VS Code terminal
-
-Opening a terminal in Visual Studio Code should theoretically allow us to run this software. I only recommend PyRosetta for Macs with high RAM, and if you are able to, increase the max-iterations upto 1000 in utils/pyrosetta_utils.py.
+PyRosetta is only needed for the `ref2015` scoring function. Recommended only if you have ≥ 16 GB RAM. If you want it, increase `max-iterations` to 1000 in `utils/pyrosetta_utils.py` first, then:
 
 ```shell
-conda env create -f rapidock_env.yaml -n newDock
-conda activate newDock # activating the constructed environment
-pip install --no-build-isolation -r requirement.txt # We separated the dependencies of conda and pip for a better experience of environment installation.
-python -c 'import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()' # Installation of PyRosetta (Optional)
+conda activate newDock
+python -c 'import pyrosetta_installer; pyrosetta_installer.install_pyrosetta()'
 ```
+
+### 4 — Activate and run
+
+```shell
+conda activate newDock
+python inference.py --complex_name <name> ...
+```
+
+> **macOS users:** no extra environment variables needed — `inference.py` sets `KMP_DUPLICATE_LIB_OK=TRUE` and `PYTORCH_ENABLE_MPS_FALLBACK=1` automatically before PyTorch loads, so MPS works out of the box.
 
 ## Protein-peptide Docking
 
