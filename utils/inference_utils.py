@@ -7,6 +7,7 @@
 
 
 import os
+import shutil
 import esm
 import MDAnalysis
 import torch
@@ -191,13 +192,13 @@ class InferenceDataset(Dataset):
     
     def get(self, idx):
         name, protein_file, peptide_description, lm_embedding, lm_embedding_pep = self.complex_names[idx], self.protein_descriptions[idx], self.peptide_descriptions[idx], self.lm_embeddings[idx], self.lm_embeddings_pep[idx]
-        os.system(f'cp {protein_file} {self.output_dir}/{name}/{name}_protein_raw.pdb')
+        shutil.copy2(protein_file, f'{self.output_dir}/{name}/{name}_protein_raw.pdb')
         # build the pytorch geometric heterogeneous graph
         c_alpha_coords_rec, tip_coords_rec, lm_embeddings_rec, seq_rec, node_s_rec, node_v_rec, edge_index_rec, edge_s_rec, edge_v_rec = get_protein_feature_mda(protein_file, lm_embedding_chains=lm_embedding)
         
         # build the initial peptide, either from file or seq
         if 'pdb' in peptide_description:
-            os.system(f'cp {peptide_description} {self.output_dir}/{name}/{name}_peptide_raw.pdb')
+            shutil.copy2(peptide_description, f'{self.output_dir}/{name}/{name}_peptide_raw.pdb')
             u = MDAnalysis.Universe(peptide_description)
             trans = {}
             seq = []

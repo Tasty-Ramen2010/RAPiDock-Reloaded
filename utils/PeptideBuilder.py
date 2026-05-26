@@ -57,10 +57,19 @@ def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
 
     Bond graph is extracted via RDKit for correctness.  Falls back to
     backbone-only edges if RDKit parsing fails.
+
+    Bug fix: the original code used an alpha-helical conformation (-57/-47) which
+    causes RDKit's proximity-based bond perception to generate spurious long-range
+    bonds between atoms from different residues that happen to be close in 3D space.
+    We now use an extended conformation (-120/120) where atoms are well-separated,
+    and additionally filter any cross-residue bonds that aren't valid covalent
+    connections (peptide N-C bonds or the PRO ring N-CD bond).
     """
     n = len(seq)
-    phi_tmp  = [-57.0] * max(n - 1, 0)   # alpha-helix; only ordering matters
-    psi_tmp  = [-47.0] * max(n - 1, 0)
+    # Extended / beta-strand conformation: backbone atoms are far apart across
+    # residues, preventing spurious proximity-based inter-residue bonds.
+    phi_tmp = [-120.0] * max(n - 1, 0)
+    psi_tmp = [ 120.0] * max(n - 1, 0)
     structure = make_structure_from_sequence(seq, phi_tmp, psi_tmp, oxt=oxt)
 
     # Serialise to an in-memory PDB string
@@ -69,6 +78,20 @@ def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
     buf = io.StringIO()
     pdbio.save(buf)
     pdb_str = buf.getvalue()
+
+    # Build atom-index → (residue_serial, atom_name) map from the PDB ATOM records.
+    # This lets us filter out spurious cross-residue bonds below.
+    atom_res: list[int]  = []   # residue serial per atom (0-based atom index)
+    atom_name: list[str] = []   # atom name per atom (0-based atom index)
+    for line in pdb_str.splitlines():
+        if line.startswith("ATOM") or line.startswith("HETATM"):
+            try:
+                res_seq  = int(line[22:26].strip())
+                aname    = line[12:16].strip()
+                atom_res.append(res_seq)
+                atom_name.append(aname)
+            except ValueError:
+                pass
 
     # Extract bonds with RDKit
     try:
@@ -80,10 +103,37 @@ def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
             mol = _RemoveHs(mol, sanitize=False)
             edges: list[tuple[int, int, int]] = []
             for bond in mol.GetBonds():
-                i  = bond.GetBeginAtomIdx() + 1   # → 1-based
-                j  = bond.GetEndAtomIdx()   + 1
+                i0 = bond.GetBeginAtomIdx()   # 0-based
+                j0 = bond.GetEndAtomIdx()
                 bt = max(1, int(round(bond.GetBondTypeAsDouble())))
-                edges.append((i, j, bt))
+
+                # Guard against index overruns (H removal shifts indices)
+                if i0 >= len(atom_res) or j0 >= len(atom_res):
+                    continue
+
+                ri, rj = atom_res[i0], atom_res[j0]
+                ni, nj = atom_name[i0], atom_name[j0]
+
+                if ri == rj:
+                    # Intra-residue bond — always keep
+                    pass
+                else:
+                    # Cross-residue bond: only keep if it is a known valid
+                    # covalent connection between adjacent residues.
+                    # (1) Peptide bond: C of residue k  →  N of residue k+1
+                    # (2) PRO ring:     N of residue k  →  CD of same residue
+                    #     (this appears as N in one residue and CD in another
+                    #      only in PDB CONECT records; with template perception
+                    #      it's intra-residue, so this branch is a safety net)
+                    is_peptide = (abs(ri - rj) == 1 and
+                                  {ni, nj} == {"C", "N"})
+                    is_pro_ring = (abs(ri - rj) == 0 and
+                                   {ni, nj} == {"N", "CD"})
+                    if not (is_peptide or is_pro_ring):
+                        continue  # drop spurious proximity bond
+
+                edges.append((i0 + 1, j0 + 1, bt))  # → 1-based
+
             if edges:
                 return np.array(edges, dtype=np.int32)
     except Exception as exc:

@@ -97,8 +97,13 @@ def generate_env_yaml(info):
         '  - MDAnalysis',
     ]
 
-    # OpenMP mutex — needed on Linux and macOS, not Windows
-    if info['os'] in ('Darwin', 'Linux'):
+    # OpenMP runtime — platform-specific:
+    #   macOS/arm64: llvm-openmp (conda-forge) — Apple ships LLVM; _openmp_mutex is Linux-only
+    #   Linux: _openmp_mutex=*=*_omp — metapackage that selects gomp vs llvm-omp
+    #   Windows: bundled with MSVC runtime, no extra package needed
+    if info['os'] == 'Darwin':
+        lines.append('  - llvm-openmp')
+    elif info['os'] == 'Linux':
         lines.append('  - _openmp_mutex=*=*_omp')
 
     lines += [

@@ -147,27 +147,34 @@ def save_predictions(write_dir, predict_pos, original_complex_graph, args, confi
         raw_pdb.atoms.write(peptide_unrelaxed_file)
 
     if args.scoring_function == "ref2015" or args.fastrelax:
-        from utils.pyrosetta_utils import relax_score
-        relaxed_poses = [peptide.replace(".pdb", "_relaxed.pdb") for peptide in peptide_unrelaxed_files]
-        protein_raw_file = f"{write_dir}/{os.path.basename(write_dir)}_protein_raw.pdb"
-
-        with multiprocessing.Pool(args.cpu) as pool:
-            ref2015_scores = pool.map(
-                relax_score,
-                zip(
-                    [protein_raw_file] * len(peptide_unrelaxed_files),
-                    peptide_unrelaxed_files,
-                    relaxed_poses,
-                    [args.scoring_function == "ref2015"] * len(peptide_unrelaxed_files),
-                ),
+        from utils.pyrosetta_utils import relax_score, PYROSETTA_AVAILABLE
+        if not PYROSETTA_AVAILABLE:
+            print(
+                "WARNING: PyRosetta is not available on this system "
+                "(requires ≥32 GB RAM and a PyRosetta installation). "
+                "Skipping ref2015 scoring — unrelaxed poses saved as rank*.pdb."
             )
-        if ref2015_scores and ref2015_scores[0] is not None:
-            re_order = np.argsort(ref2015_scores)
-            score_results = [['file','ref2015score']]
-            for rank, order in enumerate(re_order):
-                os.rename(relaxed_poses[order], os.path.join(write_dir, f"rank{rank+1}_{args.scoring_function}.pdb"))
-                score_results.append([f"rank{rank+1}_{args.scoring_function}", f"{ref2015_scores[order]:.2f}"])
-            open(os.path.join(write_dir, "ref2015_score.csv"),'w').write('\n'.join([','.join(i) for i in score_results]))
+        else:
+            relaxed_poses = [peptide.replace(".pdb", "_relaxed.pdb") for peptide in peptide_unrelaxed_files]
+            protein_raw_file = f"{write_dir}/{os.path.basename(write_dir)}_protein_raw.pdb"
+
+            with multiprocessing.Pool(args.cpu) as pool:
+                ref2015_scores = pool.map(
+                    relax_score,
+                    zip(
+                        [protein_raw_file] * len(peptide_unrelaxed_files),
+                        peptide_unrelaxed_files,
+                        relaxed_poses,
+                        [args.scoring_function == "ref2015"] * len(peptide_unrelaxed_files),
+                    ),
+                )
+            if ref2015_scores and ref2015_scores[0] is not None:
+                re_order = np.argsort(ref2015_scores)
+                score_results = [['file','ref2015score']]
+                for rank, order in enumerate(re_order):
+                    os.rename(relaxed_poses[order], os.path.join(write_dir, f"rank{rank+1}_{args.scoring_function}.pdb"))
+                    score_results.append([f"rank{rank+1}_{args.scoring_function}", f"{ref2015_scores[order]:.2f}"])
+                open(os.path.join(write_dir, "ref2015_score.csv"),'w').write('\n'.join([','.join(i) for i in score_results]))
     
     if re_order is not None:
         return re_order
