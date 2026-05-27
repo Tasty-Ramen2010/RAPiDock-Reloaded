@@ -46,7 +46,11 @@ def make_structure_from_sequence(seq: str, phi, psi_im1, oxt: bool = True) -> "B
     return _make_structure_fallback(seq, phi, psi_im1, oxt)
 
 # Return int32 array of heavy-atom bond edges - RDKit availability only
-def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
+def get_edges_from_sequence(
+    seq: str,
+    oxt: bool = True,
+    return_atom_keys: bool = False,
+) -> "np.ndarray | tuple[np.ndarray, list[tuple[int, str]]]":
     """
     Return heavy-atom bond indices for *seq* as an (N_bonds, 3) int32 array.
 
@@ -64,6 +68,19 @@ def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
     We now use an extended conformation (-120/120) where atoms are well-separated,
     and additionally filter any cross-residue bonds that aren't valid covalent
     connections (peptide N-C bonds or the PRO ring N-CD bond).
+
+    Args:
+        seq: Single-letter amino acid sequence.
+        oxt: Whether to include the C-terminal OXT atom.
+        return_atom_keys: When True, also return a list of (residue_serial, atom_name)
+            tuples — one per template atom, in the same 1-based index order used by
+            the returned edge array.  Callers that apply edges to a PDB with DIFFERENT
+            atom ordering (e.g. one that includes Cβ/side-chain atoms) MUST use these
+            keys to remap edge indices rather than applying template indices directly.
+
+    Returns:
+        edges: (N_bonds, 3) int32 array of [src_1based, dst_1based, bond_type].
+        atom_keys (if return_atom_keys=True): list[(residue_serial, atom_name)].
     """
     n = len(seq)
     # Extended / beta-strand conformation: backbone atoms are far apart across
@@ -115,8 +132,21 @@ def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
                 ni, nj = atom_name[i0], atom_name[j0]
 
                 if ri == rj:
-                    # Intra-residue bond — always keep
-                    pass
+                    # Intra-residue bond — keep only if it is a known valid bond.
+                    # In the backbone-only fallback (no PeptideBuilder) the only
+                    # heavy atoms are N, CA, C, O, OXT.  Valid intra-residue bonds:
+                    #   N-CA,  CA-C,  C-O,  C-OXT
+                    # Reject anything else (e.g. spurious N-C from proximity if
+                    # idealized geometry is too compressed).
+                    if not _HAS_PB:
+                        _BACKBONE_BONDS = {
+                            frozenset({"N",   "CA"}),
+                            frozenset({"CA",  "C" }),
+                            frozenset({"C",   "O" }),
+                            frozenset({"C",   "OXT"}),
+                        }
+                        if frozenset({ni, nj}) not in _BACKBONE_BONDS:
+                            continue  # drop spurious proximity bond
                 else:
                     # Cross-residue bond: only keep if it is a known valid
                     # covalent connection between adjacent residues.
@@ -135,7 +165,11 @@ def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
                 edges.append((i0 + 1, j0 + 1, bt))  # → 1-based
 
             if edges:
-                return np.array(edges, dtype=np.int32)
+                arr = np.array(edges, dtype=np.int32)
+                if return_atom_keys:
+                    keys = list(zip(atom_res, atom_name))
+                    return arr, keys
+                return arr
     except Exception as exc:
         warnings.warn(
             f"get_edges_from_sequence: RDKit bond extraction failed ({exc}); "
@@ -143,7 +177,11 @@ def get_edges_from_sequence(seq: str, oxt: bool = True) -> np.ndarray:
             stacklevel=2,
         )
 
-    return _backbone_edges_fallback(seq, oxt)
+    arr = _backbone_edges_fallback(seq, oxt)
+    if return_atom_keys:
+        keys = _backbone_atom_keys(seq, oxt)
+        return arr, keys
+    return arr
 
 # PeptideBuilder usage
 def _make_structure_peptidebuilder(seq, phi, psi_im1, oxt):
@@ -197,12 +235,19 @@ def _make_structure_fallback(seq, phi, psi_im1, oxt):
         resname = AA3.get(aa, "UNK")
         res = Residue.Residue((" ", i + 1, " "), resname, " ")
 
-        # Idealized backbone offsets from Cα (Å)
+        # Idealized backbone offsets from Cα (Å) — physically realistic geometry.
+        # N-CA-C angle ≈ 111° gives N...C ≈ 2.46 Å (> RDKit bond-perception cutoff
+        # of ~2.2 Å), preventing spurious N-C intra-residue bonds in RDKit.
+        # Old offsets (N=[-0.55,0.80], C=[1.20,0.50]) gave N...C ≈ 1.78 Å → valence 5.
+        #
+        # Derivation: CA at origin; N along -x (N-CA = 1.458 Å);
+        # N-CA-C angle 111° → C at 69° from +x with CA-C = 1.525 Å;
+        # O at 120° off C-CA, C=O = 1.229 Å → O above C in +y direction.
         backbone = {
-            "N" : ca + np.array([-0.55,  0.80, 0.00], dtype=np.float32),
+            "N" : ca + np.array([-1.458,  0.000,  0.000], dtype=np.float32),
             "CA": ca.copy(),
-            "C" : ca + np.array([ 1.20,  0.50, 0.00], dtype=np.float32),
-            "O" : ca + np.array([ 1.50,  1.55, 0.00], dtype=np.float32),
+            "C" : ca + np.array([ 0.544,  1.420,  0.000], dtype=np.float32),
+            "O" : ca + np.array([ 1.759,  1.613,  0.000], dtype=np.float32),
         }
         for name, pos in backbone.items():
             res.add(Atom.Atom(
@@ -213,11 +258,15 @@ def _make_structure_fallback(seq, phi, psi_im1, oxt):
 
         chain_obj.add(res)
 
-    # Add C-terminal OXT to the last residue
+    # Add C-terminal OXT to the last residue.
+    # OXT is placed at +120° rotation from C=O around the C-CA axis (carboxylate geometry).
+    # With the corrected backbone offsets, OXT = C + (-0.788, +0.971, 0).
+    # This gives: C-OXT ≈ 1.251 Å, N-OXT ≈ 2.68 Å, O-OXT ≈ 2.15 Å — all safe from
+    # RDKit bond perception (N-O cutoff ≈ 1.88 Å, O-O cutoff ≈ 1.86 Å).
     if oxt and n > 0:
         last_res = list(chain_obj.get_residues())[-1]
         c_pos   = last_res["C"].get_vector().get_array()
-        oxt_pos = c_pos + np.array([1.25, -1.00, 0.00], dtype=np.float32)
+        oxt_pos = c_pos + np.array([-0.788, 0.971, 0.00], dtype=np.float32)
         last_res.add(Atom.Atom(
             name="OXT", coord=oxt_pos, bfactor=0.0, occupancy=1.0,
             altloc=" ", fullname=" OXT", serial_number=serial,
@@ -228,6 +277,18 @@ def _make_structure_fallback(seq, phi, psi_im1, oxt):
     return structure
 
 # backbone-only bond edges for a 4-atom-per-residue structure; RDKit fallback
+def _backbone_atom_keys(seq: str, oxt: bool) -> list[tuple[int, str]]:
+    """Return (residue_serial_1based, atom_name) for every backbone-only template atom."""
+    keys: list[tuple[int, str]] = []
+    n = len(seq)
+    for i in range(n):
+        res = i + 1
+        keys += [(res, "N"), (res, "CA"), (res, "C"), (res, "O")]
+    if oxt and n > 0:
+        keys.append((n, "OXT"))
+    return keys
+
+
 def _backbone_edges_fallback(seq: str, oxt: bool) -> np.ndarray:
     edges: list[tuple[int, int, int]] = []
     n = len(seq)

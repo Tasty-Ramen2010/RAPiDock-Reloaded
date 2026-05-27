@@ -151,22 +151,60 @@ def read_pdb_with_seq(pdbfile: str, sanitize: bool = True, addHs: bool = False):
                 else f"{residue.resid}{residue.icode.strip()}"
             )
         ] = res_idx
-    real_idx = [
-        trans[idx] for idx in sorted(set(trans.keys()), key=standard_residue_sort)
-    ]
+    sorted_res_keys = sorted(set(trans.keys()), key=standard_residue_sort)
+    real_idx = [trans[idx] for idx in sorted_res_keys]
     seq = [seq[i] for i in real_idx]
     seq = "".join(seq)
     oxt = len(u.atoms.select_atoms("name OXT")) == 1
-    edges = get_edges_from_sequence(seq, oxt).tolist()
+
+    # get_edges_from_sequence returns 1-based indices into the PeptideBuilder
+    # template atom ordering (backbone-only: N,CA,C,O per residue + optional OXT).
+    # The actual pose PDB may have Cβ and/or side-chain atoms at different positions,
+    # making direct index application wrong (carbon ends up with valence 5).
+    # Fix: use return_atom_keys=True to get (res_serial, atom_name) per template atom,
+    # then remap to actual mol atom indices via sequential residue numbering.
+    edges_arr, template_atom_keys = get_edges_from_sequence(seq, oxt, return_atom_keys=True)
+    edges = edges_arr.tolist()
+
+    # Build (sequential_1based_residue_idx, atom_name) -> 0-based RDKit atom index.
+    # Sequential numbering follows sorted_res_keys order (same as the seq we extracted).
+    # We parse the PDB file directly for atom ordering because Chem.MolFromPDBFile
+    # uses the same ATOM-record order, and direct PDB parsing is safer than relying on
+    # the MonomerInfo API (which may return a base AtomMonomerInfo without resid methods).
+    pdb_res_to_seq: dict = {k: i + 1 for i, k in enumerate(sorted_res_keys)}
+    actual_idx_map: dict = {}
+    rdkit_atom_idx: int = 0
+    with open(pdbfile) as _pf:
+        for _line in _pf:
+            if not (_line.startswith("ATOM") or _line.startswith("HETATM")):
+                continue
+            try:
+                _resnum = int(_line[22:26].strip())
+                _icode  = _line[26].strip() if len(_line) > 26 else ""
+                _aname  = _line[12:16].strip()
+            except (ValueError, IndexError):
+                rdkit_atom_idx += 1
+                continue
+            _res_key = _resnum if not _icode else f"{_resnum}{_icode}"
+            _seq_idx = pdb_res_to_seq.get(_res_key)
+            if _seq_idx is not None:
+                actual_idx_map[(_seq_idx, _aname)] = rdkit_atom_idx
+            rdkit_atom_idx += 1
 
     for edge in edges:
-        atom1_idx, atom2_idx, bond_type = edge
+        t_i1, t_j1, bond_type = edge          # 1-based template indices
+        key_i = template_atom_keys[t_i1 - 1]  # (seq_res, atom_name) from template
+        key_j = template_atom_keys[t_j1 - 1]
+        ai = actual_idx_map.get(key_i)
+        aj = actual_idx_map.get(key_j)
+        if ai is None or aj is None:
+            continue  # atom absent in actual PDB (shouldn't happen for backbone)
         if bond_type == 1:
-            rw_mol.AddBond(atom1_idx - 1, atom2_idx - 1, Chem.BondType.SINGLE)
+            rw_mol.AddBond(ai, aj, Chem.BondType.SINGLE)
         elif bond_type == 2:
-            rw_mol.AddBond(atom1_idx - 1, atom2_idx - 1, Chem.BondType.DOUBLE)
+            rw_mol.AddBond(ai, aj, Chem.BondType.DOUBLE)
         elif bond_type == 3:
-            rw_mol.AddBond(atom1_idx - 1, atom2_idx - 1, Chem.BondType.TRIPLE)
+            rw_mol.AddBond(ai, aj, Chem.BondType.TRIPLE)
         else:
             raise RuntimeError
 
