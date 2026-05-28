@@ -167,7 +167,7 @@ def get_orientations(X):
 def get_sidechains(n, ca, c):
     c, n = _normalize(c - ca), _normalize(n - ca)
     bisector = _normalize(c + n)
-    perp = _normalize(torch.cross(c, n))
+    perp = _normalize(torch.linalg.cross(c, n, dim=-1))
     vec = -bisector * math.sqrt(1 / 3) - perp * math.sqrt(2 / 3)
     return vec
 

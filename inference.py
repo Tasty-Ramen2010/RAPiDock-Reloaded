@@ -275,7 +275,12 @@ def main(args):
         dataset=inference_dataset, batch_size=1, shuffle=False
     )
 
-    model = load_model(score_model_args, f"{args.model_dir}/{args.ckpt}", device)
+    # If --ckpt is an absolute path use it directly; otherwise resolve relative
+    # to --model_dir.  This lets the compare script pass an absolute finetuned
+    # checkpoint without triggering path-doubling.
+    import os as _os
+    _ckpt_path = args.ckpt if _os.path.isabs(args.ckpt) else f"{args.model_dir}/{args.ckpt}"
+    model = load_model(score_model_args, _ckpt_path, device)
 
     # load confidence model
     confidence_model = None

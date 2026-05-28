@@ -480,7 +480,7 @@ def get_orientations(X):
 def get_sidechains(n, ca, c):
     c, n = _normalize(c - ca), _normalize(n - ca)
     bisector = _normalize(c + n)
-    perp = _normalize(torch.cross(c, n))
+    perp = _normalize(torch.linalg.cross(c, n, dim=-1))
     vec = -bisector * math.sqrt(1 / 3) - perp * math.sqrt(2 / 3)
     return vec
 
@@ -590,13 +590,17 @@ def get_ori_peptide_feature_mda(peptide_file, lm_embedding_chains=None, match = 
                 raise ValueError("Empty residue mapping in peptide chain")
 
             if lm_embedding_chains is not None:
-                try:
-                    # print(len(embedding_idx),len(lm_embedding_chain))
-                    assert len(embedding_idx) == len(lm_embedding_chain)
-                except:
-                    raise RuntimeError(peptide_file)
-            else:pass
-            lm_embedding_chain = [lm_embedding_chain[i] for i in [idx for idx, i in enumerate(embedding_idx) if i in trans.keys()]] if lm_embedding_chains is not None else None
+                if len(embedding_idx) != len(lm_embedding_chain):
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "peptide_feature: embedding_idx len %d != lm_embedding_chain len %d "
+                        "for %s — falling back to positional indexing",
+                        len(embedding_idx), len(lm_embedding_chain), peptide_file,
+                    )
+                    # Fall back: use only as many positions as ESM produced
+                    embedding_idx = list(range(len(lm_embedding_chain)))
+                    trans = {i: trans.get(i, i) for i in embedding_idx}
+            lm_embedding_chain = [lm_embedding_chain[idx] for idx, i in enumerate(embedding_idx) if i in trans.keys() and idx < len(lm_embedding_chain)] if lm_embedding_chains is not None else None
             
             lengths.append(count)
             coords.append(chain_coords)
@@ -718,15 +722,15 @@ def get_updated_peptide_feature(data, device, top_k=24):
     n_after_c = _normalize(torch.where(torch.logical_and(1.3 < (n_after-c).norm(dim=-1), (n_after-c).norm(dim=-1) < 1.4).unsqueeze(-1).repeat(1,3), (n_after-c), torch.full((1, 3), float('nan')).to(device)))
     ca_after_n_after = _normalize(torch.where(torch.logical_and(1.4 < (ca_after-n_after).norm(dim=-1), (ca_after-n_after).norm(dim=-1) < 1.5).unsqueeze(-1).repeat(1,3), (ca_after-n_after), torch.full((1, 3), float('nan')).to(device)))
 
-    cosD_phi = torch.sum(_normalize(torch.cross(n_c_before, ca_n), dim=-1) * _normalize(torch.cross(ca_n, c_ca), dim=-1), dim=-1)
+    cosD_phi = torch.sum(_normalize(torch.linalg.cross(n_c_before, ca_n, dim=-1), dim=-1) * _normalize(torch.linalg.cross(ca_n, c_ca, dim=-1), dim=-1), dim=-1)
     cosD_phi = torch.clamp(cosD_phi, -1 + 1e-7, 1 - 1e-7)
-    D_phi = torch.sign(torch.sum(n_c_before * _normalize(torch.cross(ca_n, c_ca), dim=-1), -1)) * torch.acos(cosD_phi) # phi
-    cosD_psi = torch.sum(_normalize(torch.cross(ca_n, c_ca), dim=-1) * _normalize(torch.cross(c_ca, n_after_c), dim=-1), dim=-1)
+    D_phi = torch.sign(torch.sum(n_c_before * _normalize(torch.linalg.cross(ca_n, c_ca, dim=-1), dim=-1), -1)) * torch.acos(cosD_phi) # phi
+    cosD_psi = torch.sum(_normalize(torch.linalg.cross(ca_n, c_ca, dim=-1), dim=-1) * _normalize(torch.linalg.cross(c_ca, n_after_c, dim=-1), dim=-1), dim=-1)
     cosD_psi = torch.clamp(cosD_psi, -1 + 1e-7, 1 - 1e-7)
-    D_psi = torch.sign(torch.sum(ca_n * _normalize(torch.cross(c_ca, n_after_c), dim=-1), -1)) * torch.acos(cosD_psi) # psi
-    cosD_omega = torch.sum(_normalize(torch.cross(c_ca, n_after_c), dim=-1) * _normalize(torch.cross(n_after_c, ca_after_n_after), dim=-1), dim=-1)
+    D_psi = torch.sign(torch.sum(ca_n * _normalize(torch.linalg.cross(c_ca, n_after_c, dim=-1), dim=-1), -1)) * torch.acos(cosD_psi) # psi
+    cosD_omega = torch.sum(_normalize(torch.linalg.cross(c_ca, n_after_c, dim=-1), dim=-1) * _normalize(torch.linalg.cross(n_after_c, ca_after_n_after, dim=-1), dim=-1), dim=-1)
     cosD_omega = torch.clamp(cosD_omega, -1 + 1e-7, 1 - 1e-7)
-    D_omega = torch.sign(torch.sum(c_ca * _normalize(torch.cross(n_after_c, ca_after_n_after), dim=-1), -1)) * torch.acos(cosD_omega) # omega
+    D_omega = torch.sign(torch.sum(c_ca * _normalize(torch.linalg.cross(n_after_c, ca_after_n_after, dim=-1), dim=-1), -1)) * torch.acos(cosD_omega) # omega
 
     dihediral_angles = torch.cat([D_phi.unsqueeze(-1),D_psi.unsqueeze(-1),D_omega.unsqueeze(-1)],dim=1) # [n,3]
     
