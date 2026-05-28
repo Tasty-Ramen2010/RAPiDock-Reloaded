@@ -9,16 +9,25 @@
 import os
 import sys
 
-# ── macOS env-var guards ────────────────────────────────────────────────────
+# ── Platform env-var guards ─────────────────────────────────────────────────
 # Must be set BEFORE torch is imported so the flags are visible when
 # PyTorch/OpenMP shared libraries are loaded.
 #
-# KMP_DUPLICATE_LIB_OK  – silences the crash caused by two copies of
-#   libiomp5 being loaded (common when conda PyTorch meets a system OpenMP).
+# macOS:
+#   KMP_DUPLICATE_LIB_OK  – silences the crash caused by two copies of
+#     libiomp5 being loaded (common when conda PyTorch meets a system OpenMP).
+#   PYTORCH_ENABLE_MPS_FALLBACK – lets ops not yet ported to Metal fall back
+#     to CPU automatically instead of raising a NotImplementedError.
 #
-# PYTORCH_ENABLE_MPS_FALLBACK – lets ops not yet ported to Metal (e.g.
-#   torch.unique with a dim argument, torch_scatter) fall back to CPU
-#   automatically instead of raising a NotImplementedError.
+# AMD ROCm (Linux):
+#   HSA_OVERRIDE_GFX_VERSION – allows running on GFX versions not explicitly
+#     listed in the ROCm support matrix (e.g. RX 7000 series on ROCm 6.2).
+#     Only set when already in the user's environment; we do not override.
+#   ROCM_HOME must be on PATH for driver detection — not set here.
+#
+# Intel XPU (Linux):
+#   No special env vars required; ipex auto-initialises the XPU backend on
+#   import.  SYCL_CACHE_PERSISTENT=1 can speed repeated runs (not set here).
 if sys.platform == "darwin":
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
     os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
@@ -259,13 +268,24 @@ def main(args):
     os.makedirs(args.output_dir, exist_ok=True)
     if torch.cuda.is_available():
         device = torch.device("cuda")
+        # Distinguish NVIDIA CUDA from AMD ROCm — both present as "cuda" in PyTorch.
+        _hip = getattr(torch.version, "hip", None)
+        if _hip:
+            _name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "unknown"
+            print(f"Using device: cuda (AMD ROCm {_hip} — {_name})")
+        else:
+            _name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "unknown"
+            print(f"Using device: cuda (NVIDIA — {_name})")
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
-    elif hasattr(torch.backends, "xpu") and torch.backends.xpu.is_available():
+        print("Using device: mps (Apple Silicon)")
+    elif hasattr(torch, "xpu") and callable(getattr(torch.xpu, "is_available", None)) and torch.xpu.is_available():
         device = torch.device("xpu")
+        _xpu_name = torch.xpu.get_device_name(0) if torch.xpu.device_count() > 0 else "unknown"
+        print(f"Using device: xpu (Intel GPU — {_xpu_name})")
     else:
         device = torch.device("cpu")
-    print(f"Using device: {device}")
+        print("Using device: cpu")
 
     with open(f"{args.model_dir}/model_parameters.yml") as f:
         score_model_args = Namespace(**yaml.full_load(f))
