@@ -183,6 +183,7 @@ class CGTPEL(nn.Module):
         """
         edge_src, edge_dst = edge_index
         tp = self.tensor_prod(node_attr[edge_dst], edge_sh, self.fc(edge_attr))
+        tp = tp.float()
 
         out_nodes = out_nodes or node_attr.shape[0]
         out = scatter(tp, edge_src, dim=0, dim_size=out_nodes, reduce=reduction)
@@ -484,7 +485,9 @@ class CGTensorProductEquivariantModel(nn.Module):
         pep_a_node_attr_from_pep = torch.cat([pep_node_attr[data['pep'].batch == i][data['pep_a'].atom2res_index[data['pep_a'].batch == i]] for i in range(len(data.name))],dim=0)
         data['pep_a'].node_sigma_emb = self.timestep_emb_func(data['pep_a'].node_t['tr']) # tr rot and tor noise is all the same
         pep_a_node_attr = torch.cat(
-                [data['pep_a'].atom2resid_index.unsqueeze(-1), data['pep_a'].atom2atomid_index.unsqueeze(-1), data['pep_a'].x, data['pep_a'].node_sigma_emb,pep_a_node_attr_from_pep], 1
+                [data['pep_a'].atom2resid_index.unsqueeze(-1).float(),
+                 data['pep_a'].atom2atomid_index.unsqueeze(-1).float(),
+                 data['pep_a'].x.float(), data['pep_a'].node_sigma_emb, pep_a_node_attr_from_pep], 1
             ) # 1+1+19+32+??84
         pep_a_node_attr = self.pep_a_node_embedding(pep_a_node_attr)
         
@@ -582,7 +585,7 @@ class CGTensorProductEquivariantModel(nn.Module):
         if len(data['pep'].x.shape) == 1:
             data['pep'].x = data['pep'].x[:,None]
         node_attr = torch.cat(
-                [data['pep'].x, data['pep'].node_sigma_emb], 1
+                [data['pep'].x.float(), data['pep'].node_sigma_emb], 1
             ) # 1+5+4+32
         # this assumes the edges were already created in preprocessing since protein's structure is fixed
         edge_index = data['pep', 'pep'].edge_index

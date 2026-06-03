@@ -9,7 +9,7 @@ import math
 import numpy as np
 import torch
 from torch_scatter import scatter_max,scatter_min
-from utils.PeptideBuilder import make_structure_from_sequence  # get_edges_from_sequence replaced by RDKit extraction below
+from utils.PeptideBuilder import get_edges_from_sequence
 import torch.nn.functional as F
 import torch_cluster
 from MDAnalysis.analysis import distances
@@ -515,8 +515,10 @@ def get_ori_peptide_feature_mda(peptide_file, lm_embedding_chains=None, match = 
     else:
         peptide_mol = MDAnalysis.Universe(peptide_file)
         
-    # all_edge_index is computed after peptide_noh.pdb is written (see below),
-    # using RDKit for correct atom-level bond indices that work for all residue types.
+    seq_str = ''.join([three_to_one[res_name] if res_name in three_to_one.keys() else f'[{res_name}]' for res_name in peptide_mol.residues.resnames])
+    oxt = len(peptide_mol.atoms.select_atoms('name OXT')) == 1
+    all_edge_index = (get_edges_from_sequence(seq_str, oxt=oxt)[:,:2] -1)
+    all_edge_index = np.concatenate([all_edge_index,all_edge_index[:,[1,0]]],axis=-1).reshape(-1,2)
 
     with torch.no_grad():
         coords = []
@@ -554,14 +556,7 @@ def get_ori_peptide_feature_mda(peptide_file, lm_embedding_chains=None, match = 
                     
                     chain_seq.append(three2idx[three2self.get(res_name, 'X')])
                     chain_pure_res_lis.append(residue)
-                    key = residue.resid
-                    if residue.icode and residue.icode.strip():
-                        key = f"{residue.resid}{residue.icode.strip()}"
-
-                    try:
-                        trans[int(key)] = _
-                    except:
-                        trans[str(key)] = _
+                    trans[int(residue.resid) if residue.icode == '' else f"{residue.resid}{residue.icode.strip()}"] = _
                     count += 1
                     
             # Normalize the order of residues
@@ -572,35 +567,19 @@ def get_ori_peptide_feature_mda(peptide_file, lm_embedding_chains=None, match = 
             chain_seq = [chain_seq[i] for i in real_idx]
             chain_pure_res_lis = [chain_pure_res_lis[i] for i in real_idx]
 
-            int_keys = [k for k in trans.keys() if isinstance(k, int)]
-
-            if len(int_keys) == 0:
-                int_keys = list(range(len(chain_coords)))
-                trans = {i: i for i in int_keys}
-                start, end = 0, len(int_keys) - 1
+            # FIX (May 28 2026): guard against empty int_keys (all-insertion-code residue IDs)
+            _int_keys = [i for i in trans.keys() if isinstance(i, int)]
+            if _int_keys:
+                embedding_idx = sorted(set(trans.keys()) | set(range(min(_int_keys), max(_int_keys) + 1)), key=standard_residue_sort)
             else:
-                start, end = min(int_keys), max(int_keys)
-
-            embedding_idx = sorted(
-                set(int_keys) | set(range(start, end + 1)),
-                key=standard_residue_sort
-            )
-
-            if len(trans) == 0:
-                raise ValueError("Empty residue mapping in peptide chain")
-
+                embedding_idx = sorted(set(trans.keys()), key=standard_residue_sort)
             if lm_embedding_chains is not None:
-                if len(embedding_idx) != len(lm_embedding_chain):
-                    import logging as _logging
-                    _logging.getLogger(__name__).warning(
-                        "peptide_feature: embedding_idx len %d != lm_embedding_chain len %d "
-                        "for %s — falling back to positional indexing",
-                        len(embedding_idx), len(lm_embedding_chain), peptide_file,
-                    )
-                    # Fall back: use only as many positions as ESM produced
-                    embedding_idx = list(range(len(lm_embedding_chain)))
-                    trans = {i: trans.get(i, i) for i in embedding_idx}
-            lm_embedding_chain = [lm_embedding_chain[idx] for idx, i in enumerate(embedding_idx) if i in trans.keys() and idx < len(lm_embedding_chain)] if lm_embedding_chains is not None else None
+                try:
+                    assert len(embedding_idx) == len(lm_embedding_chain)
+                except:
+                    raise RuntimeError(peptide_file)
+            else:pass
+            lm_embedding_chain = [lm_embedding_chain[i] for i in [idx for idx, i in enumerate(embedding_idx) if i in trans.keys()]] if lm_embedding_chains is not None else None
             
             lengths.append(count)
             coords.append(chain_coords)
@@ -631,21 +610,6 @@ def get_ori_peptide_feature_mda(peptide_file, lm_embedding_chains=None, match = 
         new_u_content = ''.join(open(os.path.join(os.path.dirname(peptide_file), 'peptide_noh.pdb'),'r').readlines())
         new_u = MDAnalysis.Universe(StringIO(new_u_content),format='pdb')
         backbone_edge_index,res_atoms_dic = find_backbone_bonds(new_u)
-
-        #nuild all-atom edge index using RDKit, due to similarity in reading from MDAnalysis and RDKit when it comes to atom ordering, we can be assured that the edge indices will be correct for all residue types (including non-standard ones), which is not the case when we try to find sidechain bonds using MDAnalysis directly.
-        _rdmol = Chem.MolFromPDBBlock(new_u_content, sanitize=False, removeHs=False)
-        if _rdmol is not None:
-            _rdmol = RemoveHs(_rdmol, sanitize=False)
-            _rows, _cols = [], []
-            for _bond in _rdmol.GetBonds():
-                _i, _j = _bond.GetBeginAtomIdx(), _bond.GetEndAtomIdx()
-                _rows += [_i, _j]
-                _cols += [_j, _i]
-            all_edge_index = np.array(list(zip(_rows, _cols)), dtype=np.int32)
-        else:
-            # Fallback: backbone connectivity only (sidechain torsion update will be disabled for this complex).
-            all_edge_index = backbone_edge_index.T.numpy()
-
         resid_map = {f'{res.resid}{res.icode}': i for i, res in enumerate(new_u.residues)}
         atom2res_index = [resid_map[f'{atom.resid}{atom.icode}'] for atom in new_u.atoms]
         atom2resid_index = [three2idx[three2self.get(atom.resname, 'X')] for atom in new_u.atoms]
