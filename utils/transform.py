@@ -21,15 +21,23 @@ class NoiseTransform(BaseTransform):
         # save min/max sigma scales
         self.noise_schedule = NoiseSchedule(args)
         
-    def __call__(self, data):
-        """
-            Modifies data in place
-            @param (torch_geometric.data.HeteroData) data
+    def forward(self, data):
+        """Satisfy BaseTransform abstract interface (required in PyG >= 2.3).
+
+        Args:
+            data: torch_geometric.data.HeteroData complex graph.
+
+        Returns:
+            data with noise applied.
         """
         t = np.random.uniform()  # sample time
         t_tr, t_rot, t_tor_backbone, t_tor_sidechain = t, t, t, t  # same time scale for each
         data = self.apply_noise(data, t_tr, t_rot, t_tor_backbone, t_tor_sidechain)
         return data
+
+    def __call__(self, data):
+        """Delegate to forward() for compatibility with both direct calls and PyG transforms."""
+        return self.forward(data)
     
     def apply_noise(self, data, t_tr, t_rot, t_tor_backbone, t_tor_sidechain,
                     tr_update=None,

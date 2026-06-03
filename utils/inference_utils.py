@@ -183,22 +183,29 @@ class InferenceDataset(Dataset):
             for i in range(len(protein_description_list)):
                 if 'pdb' not in protein_description_list[i]:
                     self.protein_descriptions[i] = f"{output_dir}/{complex_name_list[i]}/{complex_name_list[i]}_esmfold.pdb"
+                    os.makedirs(os.path.dirname(self.protein_descriptions[i]), exist_ok=True)
                     if not os.path.exists(self.protein_descriptions[i]):
                         print("generating", self.protein_descriptions[i])
                         generate_ESM_structure(model, self.protein_descriptions[i], protein_description_list[i])
     
-    def len(self):
+    def __len__(self):
         return len(self.complex_names)
-    
+
+    # Maintain compatibility for external code calling len() directly.
+    len = __len__
+
     def get(self, idx):
         name, protein_file, peptide_description, lm_embedding, lm_embedding_pep = self.complex_names[idx], self.protein_descriptions[idx], self.peptide_descriptions[idx], self.lm_embeddings[idx], self.lm_embeddings_pep[idx]
-        shutil.copy2(protein_file, f'{self.output_dir}/{name}/{name}_protein_raw.pdb')
+        output_subdir = os.path.join(self.output_dir, name)
+        os.makedirs(output_subdir, exist_ok=True)
+        shutil.copy2(protein_file, os.path.join(output_subdir, f'{name}_protein_raw.pdb'))
         # build the pytorch geometric heterogeneous graph
         c_alpha_coords_rec, tip_coords_rec, lm_embeddings_rec, seq_rec, node_s_rec, node_v_rec, edge_index_rec, edge_s_rec, edge_v_rec = get_protein_feature_mda(protein_file, lm_embedding_chains=lm_embedding)
         
         # build the initial peptide, either from file or seq
         if 'pdb' in peptide_description:
-            shutil.copy2(peptide_description, f'{self.output_dir}/{name}/{name}_peptide_raw.pdb')
+            os.makedirs(output_subdir, exist_ok=True)
+            shutil.copy2(peptide_description, os.path.join(output_subdir, f'{name}_peptide_raw.pdb'))
             u = MDAnalysis.Universe(peptide_description)
             trans = {}
             seq = []

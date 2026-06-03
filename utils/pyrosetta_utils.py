@@ -9,16 +9,9 @@
 import psutil
 import os
 
-# Gate: PyRosetta requires ≥32 GB RAM and must be installed.
-_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
 PYROSETTA_AVAILABLE = False
 
 try:
-    if _ram_gb <= 32:
-        raise RuntimeError(
-            f"PyRosetta requires at least 32 GB of RAM "
-            f"(this system has {_ram_gb:.1f} GB)."
-        )
     import pyrosetta
     from pyrosetta.rosetta.protocols.relax import FastRelax
     from pyrosetta.rosetta.core.pack.task import TaskFactory
