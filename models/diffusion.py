@@ -17,6 +17,7 @@ from utils.diffusion_utils import get_timestep_embedding
 from utils.transform import NoiseSchedule
 from utils.so3 import score_norm
 from utils.torus import score_norm as torus_score
+from utils.metal_tp import maybe_fuse
 from dataset.peptide_feature import three2idx, allowable_features, atomname2idx, get_updated_peptide_feature
 
 print("Loading diffusion model...")
@@ -159,6 +160,10 @@ class CGTPEL(nn.Module):
         self.tensor_prod = o3.FullyConnectedTensorProduct(
             in_irreps, sh_irreps, out_irreps, shared_weights=False
         )
+        # Fused Metal kernel for Apple GPUs. Plain attribute (not a submodule)
+        # so state_dict keys are unchanged and pretrained checkpoints still
+        # load. None on any non-MPS machine, in which case nothing changes.
+        self._fast_tp = maybe_fuse(self.tensor_prod)
 
         self.fc = nn.Sequential(
             nn.Linear(n_edge_features, hidden_features),
@@ -182,7 +187,8 @@ class CGTPEL(nn.Module):
         @param edge_sh  edge spherical harmonics
         """
         edge_src, edge_dst = edge_index
-        tp = self.tensor_prod(node_attr[edge_dst], edge_sh, self.fc(edge_attr))
+        tensor_prod = self._fast_tp if self._fast_tp is not None else self.tensor_prod
+        tp = tensor_prod(node_attr[edge_dst], edge_sh, self.fc(edge_attr))
         tp = tp.float()
 
         out_nodes = out_nodes or node_attr.shape[0]
