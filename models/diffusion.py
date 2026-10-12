@@ -378,6 +378,15 @@ class CGTensorProductEquivariantModel(nn.Module):
                     nn.Dropout(self.dropout),
                     nn.Linear(ns, 1, bias=False)
                 )
+            # Contact-type embedding of the long-peptide checkpoint (longer_local.pt): an additive, per-cross-edge
+            # signal saying which of the 4 contact types (CA-CA, tip-CA, CA-tip, tip-tip) gives the shortest distance.
+            # Off by default, so the original RAPiDock checkpoints load and behave exactly as before; inference.py
+            # switches it on when the checkpoint contains `encoder.cross_type_embedding.weight`. Registered right after
+            # the torsion heads, as in training, because the EMA weights are matched to parameters by position.
+            self.use_cross_type_embedding = bool(getattr(args, 'use_cross_type_embedding', False))
+            if self.use_cross_type_embedding:
+                self.cross_type_embedding = nn.Embedding(4, ns)
+                nn.init.zeros_(self.cross_type_embedding.weight)
             
     def forward(self, _data):
         data = copy.copy(_data)
@@ -420,11 +429,13 @@ class CGTensorProductEquivariantModel(nn.Module):
             cross_cutoff = (tr_sigma * self.cross_cutoff_weight + self.cross_cutoff_bias).unsqueeze(1)
         else:
             cross_cutoff = self.cross_max_distance
-        cross_edge_index, cross_edge_attr, cross_edge_sh = self.build_cross_conv_graph(
+        cross_edge_index, cross_edge_attr, cross_edge_sh, cross_type_indices = self.build_cross_conv_graph(
             data, cross_cutoff
         )
         cross_pep, cross_rec = cross_edge_index
         cross_edge_attr = self.cross_edge_embedding(cross_edge_attr)
+        if getattr(self, 'use_cross_type_embedding', False):
+            cross_edge_attr = cross_edge_attr + self.cross_type_embedding(cross_type_indices.long())
         
         for idx in range(len(self.intra_convs)):
             # message passing within pep graph (intra)
@@ -712,7 +723,7 @@ class CGTensorProductEquivariantModel(nn.Module):
             normalization='component'
         )
 
-        return edge_index, edge_attr, edge_sh
+        return edge_index, edge_attr, edge_sh, indices
 
     def build_center_conv_graph(self, data):
         edge_index = torch.cat([data['pep'].batch.unsqueeze(0), torch.arange(len(data['pep'].batch)).to(data['pep'].x.device).unsqueeze(0)], dim=0)

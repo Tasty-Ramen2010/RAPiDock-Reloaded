@@ -56,10 +56,13 @@ warnings.filterwarnings("ignore")
 
 
 def load_model(score_model_args, ckpt_path, device):
-    model = get_model(score_model_args, no_parallel=True)
     state_dict = torch.load(
         ckpt_path, map_location=torch.device("cpu")
     )
+    # The long-peptide checkpoint carries one extra layer (see ScoreModel.use_cross_type_embedding). Build the model
+    # with it only when the checkpoint has it, so every other checkpoint loads strictly and unchanged.
+    score_model_args.use_cross_type_embedding = "encoder.cross_type_embedding.weight" in state_dict["model"]
+    model = get_model(score_model_args, no_parallel=True)
     model.load_state_dict(state_dict["model"], strict=True)
     model = model.to(device)
 
